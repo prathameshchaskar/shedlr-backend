@@ -1,3 +1,56 @@
 spring:
   application:
     name: auth-service
+  datasource:
+    # JDBC URL for the PostgreSQL database. 'localhost' is used for local dev outside Docker.
+    url: jdbc:postgresql://localhost:5432/shedlr_auth
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      idle-timeout: 300000
+      connection-timeout: 20000
+      max-lifetime: 1200000
+      pool-name: ShedlrHikariPool
+  jpa:
+    hibernate:
+      # Set to 'none' because Flyway handles schema migrations.
+      # This prevents Hibernate from validating the schema before Flyway runs.
+      ddl-auto: none
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+    open-in-view: false
+  flyway:
+    enabled: true
+    # Allows Flyway to run even if the database already has existing tables
+    baseline-on-migrate: true
+    # Allows running migrations out of order (useful during concurrent development)
+    out-of-order: true
+  data:
+    redis:
+      # Connection settings for Redis used by Bucket4j and Spring Data Redis
+      host: localhost
+      port: 6379
+
+management:
+  tracing:
+    sampling:
+      # Sample 100% of requests for tracing (reduce in production)
+      probability: 1.0
+  zipkin:
+    tracing:
+      # Endpoint for sending trace spans to the Zipkin container
+      endpoint: http://localhost:9411/api/v2/spans
+
+application:
+  security:
+    jwt:
+      # Use a base64 encoded string of at least 256 bits for production
+      secret-key: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+      expiration: 3600000 # 1 hour
+      refresh-token:
+        expiration: 604800000 # 7 days

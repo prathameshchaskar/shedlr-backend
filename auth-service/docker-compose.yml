@@ -1,0 +1,40 @@
+services:
+  # PostgreSQL Database - Primary storage for user accounts, profiles, and RBAC data
+  postgres:
+    image: postgres:15-alpine
+    container_name: shedlr-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: shedlr_auth
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d shedlr_auth"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis - Used for distributed rate limiting (Bucket4j) and potentially session/cache storage
+  redis:
+    image: redis:7-alpine
+    container_name: shedlr-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Zipkin - Distributed tracing collector and UI for monitoring request flows across services
+  zipkin:
+    image: openzipkin/zipkin
+    container_name: shedlr-zipkin
+    ports:
+      - "9411:9411"
+
+volumes:
+  postgres_data:
