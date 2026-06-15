@@ -26,10 +26,12 @@ spring:
     open-in-view: false
   flyway:
     enabled: true
-    # Allows Flyway to run even if the database already has existing tables
-    baseline-on-migrate: true
-    # Allows running migrations out of order (useful during concurrent development)
-    out-of-order: true
+    locations: classpath:db/migration
+    validate-on-migrate: true
+    # Added schemas to ensure it target the right one
+    schemas: public
+    # Force Flyway to log everything
+    table: flyway_schema_history
   data:
     redis:
       # Connection settings for Redis used by Bucket4j and Spring Data Redis

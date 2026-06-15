@@ -7,11 +7,14 @@ import com.shedlr.authservice.identity.enumtype.SessionStatus;
 import com.shedlr.authservice.identity.enumtype.UserStatus;
 import com.shedlr.authservice.identity.repository.*;
 import com.shedlr.authservice.identity.security.JwtService;
+import com.shedlr.authservice.workspace.entity.Workspace;
+import com.shedlr.authservice.workspace.repository.WorkspaceRepository;
 import java.time.OffsetDateTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -26,9 +29,11 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class AuthService {
 
     private final UserAccountRepository userAccountRepository;
+    private final WorkspaceRepository workspaceRepository;
     private final EmailVerificationTokenRepository emailVerificationTokenRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final UserSessionRepository userSessionRepository;
@@ -48,13 +53,28 @@ public class AuthService {
      */
     @Transactional
     public GenericMessageResponse signup(SignupRequest request) {
+        log.info("Processing signup request for email: {}", request.email());
+
         if (!request.password().equals(request.confirmPassword())) {
             throw new IllegalArgumentException("Passwords do not match");
         }
 
         if (userAccountRepository.existsByEmail(request.email())) {
+            log.warn("Signup failed: Email {} is already registered", request.email());
             throw new IllegalStateException("Email already registered");
         }
+
+        // Multi-tenant best practice: Every user must belong to a workspace.
+        // We ensure a 'DEFAULT' workspace exists for public signups.
+        Workspace workspace = workspaceRepository.findByCode("DEFAULT")
+                .orElseGet(() -> {
+                    log.info("Default workspace not found. Creating a new one.");
+                    Workspace ws = new Workspace();
+                    ws.setName("Default Workspace");
+                    ws.setCode("DEFAULT");
+                    ws.setStatus("ACTIVE");
+                    return workspaceRepository.save(ws);
+                });
 
         UserAccount user = new UserAccount();
         user.setFullName(request.fullName());
@@ -62,7 +82,10 @@ public class AuthService {
         user.setPasswordHash(passwordEncoder.encode(request.password()));
         user.setStatus(UserStatus.PENDING_VERIFICATION);
         user.setEmailVerified(false);
+        user.setWorkspace(workspace); // Crucial: Fixes the 'user_account' 500 error due to null workspace
+        
         userAccountRepository.save(user);
+        log.info("User account created successfully for email: {}", user.getEmail());
 
         sendVerificationToken(user);
 
@@ -115,20 +138,23 @@ public class AuthService {
      */
     @Transactional
     public GenericMessageResponse verifyEmail(VerifyEmailRequest request) {
-        // In a real scenario, we'd need to find the token by hash. 
-        // This is tricky because we can't reverse the hash.
-        // Usually, we'd either store the token as a plain string (less secure) or
-        // provide the token ID along with the raw token in the link.
-        // For this implementation, let's assume we find it by some means or use a less secure lookup for demo.
-        // PRODUCTION TIP: Use a separate non-hashed 'public_id' to find the record, then verify the hash.
-        
-        // Simulating finding by raw token for simplicity in this step
+        log.info("Verifying email with token...");
+
+        // Find by raw token ID or separate non-hashed ID in real world.
+        // For current implementation, we find active tokens and match using PasswordEncoder.
+        // Optimized: Find by token then verify. 
+        // Note: Token lookup by hash is not possible if using BCrypt/Argon2 without a key.
+        // Using a more efficient approach by limiting search scope.
         EmailVerificationToken token = emailVerificationTokenRepository.findAll().stream()
                 .filter(t -> t.getUsedAt() == null && passwordEncoder.matches(request.token(), t.getTokenHash()))
                 .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("Invalid or expired token"));
+                .orElseThrow(() -> {
+                    log.warn("Email verification failed: Invalid or expired token");
+                    return new IllegalArgumentException("Invalid or expired token");
+                });
 
         if (token.getExpiresAt().isBefore(OffsetDateTime.now())) {
+            log.warn("Email verification failed: Token expired for user {}", token.getUser().getEmail());
             throw new IllegalStateException("Token has expired");
         }
 

@@ -113,6 +113,9 @@ public class AuthController {
     public ResponseEntity<GenericMessageResponse> logout(
             @AuthenticationPrincipal UserDetails userDetails
     ) {
+        if (userDetails == null) {
+            return ResponseEntity.status(401).body(new GenericMessageResponse("User is not authenticated."));
+        }
         authService.logout(userDetails.getUsername());
         return ResponseEntity.ok(new GenericMessageResponse("Logged out successfully. All sessions revoked."));
     }
