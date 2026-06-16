@@ -135,3 +135,16 @@ Before testing the endpoints, ensure your infrastructure is running:
 | `/api/v1/auth/reset-password` | POST | No | Set new password |
 | `/api/v1/users/me` | GET | **Yes** | View own profile |
 | `/api/v1/users/me` | PUT | **Yes** | Update own profile |
+
+---
+
+## 8. Frontend Integration (CORS)
+
+The backend is configured to support Cross-Origin Resource Sharing (CORS) for the Angular frontend.
+
+- **Default Allowed Origin:** `http://localhost:4200`
+- **Configuration:** Managed in `application.yaml` under `application.security.cors.allowed-origins`.
+- **Security:** In production, this list should be restricted to your actual domain names.
+- **Allowed Methods:** GET, POST, PUT, PATCH, DELETE, OPTIONS.
+- **Allowed Headers:** Authorization, Content-Type, and standard X-headers.
+- **Credentials:** Supports `allowCredentials: true`, enabling the frontend to send and receive secure headers/cookies if needed.

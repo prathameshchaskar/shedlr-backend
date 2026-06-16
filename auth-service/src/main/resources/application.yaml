@@ -50,6 +50,10 @@ management:
 
 application:
   security:
+    cors:
+      # The URL of the frontend Angular application.
+      # Used to configure CORS (Cross-Origin Resource Sharing) securely.
+      allowed-origins: http://localhost:4200
     jwt:
       # Use a base64 encoded string of at least 256 bits for production
       secret-key: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
