@@ -117,17 +117,22 @@ public class AuthService {
     }
 
     private void sendVerificationToken(UserAccount user) {
-        // Generate and save email verification token
-        String token = UUID.randomUUID().toString();
+        // Generate a high-entropy secret and a public ID
+        String secret = UUID.randomUUID().toString();
         EmailVerificationToken verificationToken = new EmailVerificationToken();
         verificationToken.setUser(user);
-        verificationToken.setTokenHash(passwordEncoder.encode(token));
+        
+        // Two-factor token format: <public_id>:<secret>
+        // This allows O(1) DB lookup followed by secure hash verification.
+        String publicToken = verificationToken.getTokenId().toString() + ":" + secret;
+        
+        verificationToken.setTokenHash(passwordEncoder.encode(secret));
         verificationToken.setExpiresAt(OffsetDateTime.now().plusHours(24));
         verificationToken.setSentToEmail(user.getEmail());
         emailVerificationTokenRepository.save(verificationToken);
 
-        // Send verification email
-        emailService.sendVerificationEmail(user.getEmail(), token);
+        // Send combined token to user
+        emailService.sendVerificationEmail(user.getEmail(), publicToken);
     }
 
     /**
@@ -140,18 +145,31 @@ public class AuthService {
     public GenericMessageResponse verifyEmail(VerifyEmailRequest request) {
         log.info("Verifying email with token...");
 
-        // Find by raw token ID or separate non-hashed ID in real world.
-        // For current implementation, we find active tokens and match using PasswordEncoder.
-        // Optimized: Find by token then verify. 
-        // Note: Token lookup by hash is not possible if using BCrypt/Argon2 without a key.
-        // Using a more efficient approach by limiting search scope.
-        EmailVerificationToken token = emailVerificationTokenRepository.findAll().stream()
-                .filter(t -> t.getUsedAt() == null && passwordEncoder.matches(request.token(), t.getTokenHash()))
-                .findFirst()
-                .orElseThrow(() -> {
-                    log.warn("Email verification failed: Invalid or expired token");
-                    return new IllegalArgumentException("Invalid or expired token");
-                });
+        // Parse two-factor token: <uuid>:<secret>
+        String fullToken = request.token();
+        if (fullToken == null || !fullToken.contains(":")) {
+            throw new IllegalArgumentException("Invalid token format");
+        }
+
+        String[] parts = fullToken.split(":");
+        UUID tokenId;
+        try {
+            tokenId = UUID.fromString(parts[0]);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid token identifier");
+        }
+        String secret = parts[1];
+
+        // O(1) Lookup by indexed UUID
+        EmailVerificationToken token = emailVerificationTokenRepository.findByTokenId(tokenId)
+                .filter(t -> t.getUsedAt() == null)
+                .orElseThrow(() -> new IllegalArgumentException("Invalid or expired token"));
+
+        // Secure verification of the secret hash
+        if (!passwordEncoder.matches(secret, token.getTokenHash())) {
+            log.warn("Email verification failed: Secret mismatch for token ID {}", tokenId);
+            throw new IllegalArgumentException("Invalid or expired token");
+        }
 
         if (token.getExpiresAt().isBefore(OffsetDateTime.now())) {
             log.warn("Email verification failed: Token expired for user {}", token.getUser().getEmail());
@@ -191,18 +209,22 @@ public class AuthService {
 
         UserDetails userDetails = userDetailsService.loadUserByUsername(request.email());
         String jwtToken = jwtService.generateToken(userDetails);
-        String refreshToken = jwtService.generateRefreshToken(userDetails);
+        
+        // Generate two-factor refresh token: <public_id>:<secret>
+        UUID publicId = UUID.randomUUID();
+        String secret = UUID.randomUUID().toString();
+        String publicRefreshToken = publicId.toString() + ":" + secret;
 
         // Track and Rotate Session
         revokeAllUserSessions(user);
-        saveUserSession(user, refreshToken);
+        saveUserSession(user, publicRefreshToken);
 
         // Map to UserSummaryResponse for complete production response
         UserSummaryResponse summary = getUserSummary(user);
 
         return new AuthResponse(
                 jwtToken,
-                refreshToken,
+                publicRefreshToken,
                 "Bearer",
                 3600, // 1 hour
                 summary
@@ -215,17 +237,30 @@ public class AuthService {
      */
     @Transactional
     public AuthResponse refreshToken(RefreshTokenRequest request) {
-        // Find session by refresh token hash
-        // In production, we'd need to handle the fact that we can't lookup by hash directly without iterating
-        // Or we store the token ID in the JWT refresh token claims.
-        // For this implementation, we simulate finding the session.
+        // Parse two-factor token: <uuid>:<secret>
+        String fullToken = request.refreshToken();
+        if (fullToken == null || !fullToken.contains(":")) {
+            throw new IllegalArgumentException("Invalid refresh token format");
+        }
+
+        String[] parts = fullToken.split(":");
+        UUID sessionPublicId;
+        try {
+            sessionPublicId = UUID.fromString(parts[0]);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid refresh token identifier");
+        }
+        String secret = parts[1];
         
-        String refreshToken = request.refreshToken();
-        
-        UserSession session = userSessionRepository.findAll().stream()
-                .filter(s -> s.getStatus() == SessionStatus.ACTIVE && passwordEncoder.matches(refreshToken, s.getRefreshTokenHash()))
-                .findFirst()
+        // O(1) Lookup by indexed UUID
+        UserSession session = userSessionRepository.findBySessionPublicIdAndStatus(sessionPublicId, SessionStatus.ACTIVE)
                 .orElseThrow(() -> new IllegalArgumentException("Invalid or expired refresh token"));
+
+        // Secure verification
+        if (!passwordEncoder.matches(secret, session.getRefreshTokenHash())) {
+            log.warn("Refresh token failed: Secret mismatch for session {}", sessionPublicId);
+            throw new IllegalArgumentException("Invalid or expired refresh token");
+        }
 
         if (session.getExpiresAt().isBefore(OffsetDateTime.now())) {
             session.setStatus(SessionStatus.EXPIRED);
@@ -237,18 +272,22 @@ public class AuthService {
         UserDetails userDetails = userDetailsService.loadUserByUsername(user.getEmail());
         
         String newAccessToken = jwtService.generateToken(userDetails);
-        String newRefreshToken = jwtService.generateRefreshToken(userDetails);
+        
+        // Generate new two-factor refresh token for rotation
+        UUID nextPublicId = UUID.randomUUID();
+        String nextSecret = UUID.randomUUID().toString();
+        String nextPublicRefreshToken = nextPublicId.toString() + ":" + nextSecret;
 
         // Rotate Refresh Token: Revoke current session and create a new one
         session.setStatus(SessionStatus.REVOKED);
         session.setRevokedAt(OffsetDateTime.now());
         userSessionRepository.save(session);
 
-        saveUserSession(user, newRefreshToken);
+        saveUserSession(user, nextPublicRefreshToken);
 
         return new AuthResponse(
                 newAccessToken,
-                newRefreshToken,
+                nextPublicRefreshToken,
                 "Bearer",
                 3600,
                 getUserSummary(user)
@@ -294,27 +333,37 @@ public class AuthService {
     }
 
     private void saveUserSession(UserAccount user, String refreshToken) {
+        // Parse public component if rotation is in progress
+        String secret = refreshToken;
+        UUID publicId = null;
+
+        if (refreshToken.contains(":")) {
+            String[] parts = refreshToken.split(":");
+            publicId = UUID.fromString(parts[0]);
+            secret = parts[1];
+        }
+
         UserSession session = new UserSession();
         session.setUser(user);
-        session.setRefreshTokenHash(passwordEncoder.encode(refreshToken));
+        if (publicId != null) {
+            session.setSessionPublicId(publicId);
+        }
+        session.setRefreshTokenHash(passwordEncoder.encode(secret));
         session.setStatus(SessionStatus.ACTIVE);
         session.setExpiresAt(OffsetDateTime.now().plusDays(7));
         userSessionRepository.save(session);
     }
 
     private void revokeAllUserSessions(UserAccount user) {
-        var validUserSessions = userSessionRepository.findAll().stream()
-                .filter(s -> s.getUser().getId().equals(user.getId()) &&
-                        (s.getStatus() == SessionStatus.ACTIVE))
-                .toList();
+        List<UserSession> activeSessions = userSessionRepository.findByUserIdAndStatus(user.getId(), SessionStatus.ACTIVE);
 
-        if (validUserSessions.isEmpty()) return;
+        if (activeSessions.isEmpty()) return;
 
-        validUserSessions.forEach(session -> {
+        activeSessions.forEach(session -> {
             session.setStatus(SessionStatus.REVOKED);
             session.setRevokedAt(OffsetDateTime.now());
         });
-        userSessionRepository.saveAll(validUserSessions);
+        userSessionRepository.saveAll(activeSessions);
     }
 
     /**
@@ -327,14 +376,17 @@ public class AuthService {
     public GenericMessageResponse forgotPassword(ForgotPasswordRequest request) {
         userAccountRepository.findByEmail(request.email().toLowerCase().trim())
                 .ifPresent(user -> {
-                    String token = UUID.randomUUID().toString();
+                    String secret = UUID.randomUUID().toString();
                     PasswordResetToken resetToken = new PasswordResetToken();
                     resetToken.setUser(user);
-                    resetToken.setTokenHash(passwordEncoder.encode(token));
+                    
+                    String publicToken = resetToken.getTokenId().toString() + ":" + secret;
+                    
+                    resetToken.setTokenHash(passwordEncoder.encode(secret));
                     resetToken.setExpiresAt(OffsetDateTime.now().plusMinutes(30));
                     passwordResetTokenRepository.save(resetToken);
 
-                    emailService.sendPasswordResetEmail(user.getEmail(), token);
+                    emailService.sendPasswordResetEmail(user.getEmail(), publicToken);
                 });
 
         return new GenericMessageResponse("If an account exists for this email, a reset link has been sent.");
@@ -352,10 +404,31 @@ public class AuthService {
             throw new IllegalArgumentException("Passwords do not match");
         }
 
-        PasswordResetToken token = passwordResetTokenRepository.findAll().stream()
-                .filter(t -> t.getUsedAt() == null && passwordEncoder.matches(request.token(), t.getTokenHash()))
-                .findFirst()
+        // Parse two-factor token: <uuid>:<secret>
+        String fullToken = request.token();
+        if (fullToken == null || !fullToken.contains(":")) {
+            throw new IllegalArgumentException("Invalid reset token format");
+        }
+
+        String[] parts = fullToken.split(":");
+        UUID tokenId;
+        try {
+            tokenId = UUID.fromString(parts[0]);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid reset token identifier");
+        }
+        String secret = parts[1];
+
+        // O(1) Lookup
+        PasswordResetToken token = passwordResetTokenRepository.findByTokenId(tokenId)
+                .filter(t -> t.getUsedAt() == null)
                 .orElseThrow(() -> new IllegalArgumentException("Invalid or expired token"));
+
+        // Secure verification
+        if (!passwordEncoder.matches(secret, token.getTokenHash())) {
+            log.warn("Password reset failed: Secret mismatch for token ID {}", tokenId);
+            throw new IllegalArgumentException("Invalid or expired token");
+        }
 
         if (token.getExpiresAt().isBefore(OffsetDateTime.now())) {
             throw new IllegalStateException("Token has expired");

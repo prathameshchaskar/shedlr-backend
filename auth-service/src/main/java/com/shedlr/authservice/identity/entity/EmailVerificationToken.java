@@ -5,6 +5,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 import java.time.OffsetDateTime;
+import java.util.UUID;
 
 /**
  * EmailVerificationToken stores short-lived tokens for email verification.
@@ -28,6 +29,13 @@ public class EmailVerificationToken extends AuditableEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    /** 
+     * Unique public identifier for the token. 
+     * Used for fast indexed lookup before hash verification.
+     */
+    @Column(name = "token_id", nullable = false, unique = true)
+    private UUID tokenId = UUID.randomUUID();
 
     /** The user associated with this verification request. */
     @ManyToOne(fetch = FetchType.LAZY, optional = false)

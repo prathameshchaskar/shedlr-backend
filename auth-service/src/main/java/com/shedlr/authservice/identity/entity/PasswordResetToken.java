@@ -5,6 +5,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 import java.time.OffsetDateTime;
+import java.util.UUID;
 
 /**
  * PasswordResetToken stores tokens for the "Forgot Password" flow.
@@ -28,6 +29,10 @@ public class PasswordResetToken extends AuditableEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    /** Public identifier for fast indexed lookup. */
+    @Column(name = "token_id", nullable = false, unique = true)
+    private UUID tokenId = UUID.randomUUID();
 
     /** The user who requested the password reset. */
     @ManyToOne(fetch = FetchType.LAZY, optional = false)

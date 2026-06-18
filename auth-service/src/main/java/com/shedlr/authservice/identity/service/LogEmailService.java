@@ -1,6 +1,7 @@
 package com.shedlr.authservice.identity.service;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Profile;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -10,6 +11,7 @@ import org.springframework.stereotype.Service;
  * Added @Async to simulate asynchronous production behavior (e.g. using a message queue).
  */
 @Service
+@Profile("dev")
 @Slf4j
 public class LogEmailService implements EmailService {
 
@@ -17,8 +19,6 @@ public class LogEmailService implements EmailService {
     @Override
     public void sendVerificationEmail(String to, String token) {
         log.info("[EMAIL] [ASYNC] Verification mail sent to: {}. Token: {}", to, token);
-        // Simulate network delay
-        try { Thread.sleep(2000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
         log.info("[EMAIL] [ASYNC] Verification mail delivery completed for: {}", to);
     }
 
@@ -26,8 +26,6 @@ public class LogEmailService implements EmailService {
     @Override
     public void sendPasswordResetEmail(String to, String token) {
         log.info("[EMAIL] [ASYNC] Password reset mail sent to: {}. Token: {}", to, token);
-        // Simulate network delay
-        try { Thread.sleep(2000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
         log.info("[EMAIL] [ASYNC] Password reset mail delivery completed for: {}", to);
     }
 }

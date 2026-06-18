@@ -6,6 +6,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 import java.time.OffsetDateTime;
+import java.util.UUID;
 
 /**
  * UserSession tracks active refresh tokens and device metadata.
@@ -30,6 +31,10 @@ public class UserSession extends AuditableEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    /** Public identifier for fast indexed lookup. */
+    @Column(name = "session_public_id", nullable = false, unique = true)
+    private UUID sessionPublicId = UUID.randomUUID();
 
     /** The user who owns this session. */
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
