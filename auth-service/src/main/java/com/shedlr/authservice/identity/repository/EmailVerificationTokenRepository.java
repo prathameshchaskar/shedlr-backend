@@ -23,4 +23,12 @@ public interface EmailVerificationTokenRepository extends JpaRepository<EmailVer
 
     /** Find any active tokens for a user to invalidate them if a new one is requested. */
     Optional<EmailVerificationToken> findByUserIdAndUsedAtIsNull(Long userId);
+
+    /**
+     * Bulk invalidates all active verification tokens for a specific user.
+     * Used to ensure a clean token lifecycle.
+     */
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.data.jpa.repository.Query("UPDATE EmailVerificationToken t SET t.usedAt = :now WHERE t.user.id = :userId AND t.usedAt IS NULL")
+    void invalidateAllActiveTokens(@org.springframework.data.repository.query.Param("userId") Long userId, @org.springframework.data.repository.query.Param("now") java.time.OffsetDateTime now);
 }

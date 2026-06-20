@@ -1,5 +1,6 @@
 package com.shedlr.authservice.identity.security;
 
+import com.shedlr.authservice.common.config.RateLimitProperties;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
 import io.github.bucket4j.BucketConfiguration;
@@ -23,6 +24,7 @@ import java.util.function.Supplier;
 public class RateLimitingService {
 
     private final ProxyManager<String> proxyManager;
+    private final RateLimitProperties rateLimitProperties;
 
     /**
      * Attempts to consume a token for a given key (e.g., IP address or email).
@@ -33,6 +35,22 @@ public class RateLimitingService {
     public boolean tryConsume(String key) {
         // Build or retrieve the bucket for this specific key from Redis
         Bucket bucket = proxyManager.builder().build(key, getBucketConfiguration());
+        return bucket.tryConsume(1);
+    }
+
+    /**
+     * Attempts to consume a token for a given key with a specific configuration.
+     *
+     * @param key The unique key to identify the requester.
+     * @param limit The maximum number of tokens.
+     * @param period The refill period.
+     * @return true if a token was consumed, false if exceeded.
+     */
+    public boolean tryConsume(String key, int limit, Duration period) {
+        BucketConfiguration configuration = BucketConfiguration.builder()
+                .addLimit(Bandwidth.classic(limit, Refill.intervally(limit, period)))
+                .build();
+        Bucket bucket = proxyManager.builder().build(key, () -> configuration);
         return bucket.tryConsume(1);
     }
 
@@ -49,8 +67,12 @@ public class RateLimitingService {
      * @return BucketConfiguration
      */
     private Supplier<BucketConfiguration> getBucketConfiguration() {
-        return () -> BucketConfiguration.builder()
-                .addLimit(Bandwidth.classic(5, Refill.intervally(5, Duration.ofMinutes(1))))
-                .build();
+        return () -> {
+            RateLimitProperties.LimitConfig login = rateLimitProperties.getLogin();
+            return BucketConfiguration.builder()
+                    .addLimit(Bandwidth.classic(login.getCapacity(), 
+                            Refill.intervally(login.getCapacity(), login.getPeriod())))
+                    .build();
+        };
     }
 }

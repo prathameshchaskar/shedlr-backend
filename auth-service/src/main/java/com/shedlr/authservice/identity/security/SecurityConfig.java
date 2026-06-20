@@ -1,5 +1,6 @@
 package com.shedlr.authservice.identity.security;
 
+import com.shedlr.authservice.common.config.SecurityProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -32,9 +33,7 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthFilter;
     private final RateLimitingFilter rateLimitingFilter;
     private final AuthenticationProvider authenticationProvider;
-
-    @Value("${application.security.cors.allowed-origins:http://localhost:4200}")
-    private List<String> allowedOrigins;
+    private final SecurityProperties securityProperties;
 
     /**
      * Configures the main security filter chain.
@@ -87,7 +86,7 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         
         // Allowed origins from application.yaml
-        configuration.setAllowedOrigins(allowedOrigins);
+        configuration.setAllowedOrigins(securityProperties.getCors().getAllowedOrigins());
         
         // Standard methods for a REST API
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));

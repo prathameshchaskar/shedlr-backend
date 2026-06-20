@@ -1,12 +1,15 @@
 package com.shedlr.authservice.identity.controller;
 
+import com.shedlr.authservice.common.exception.base.AuthException;
+import com.shedlr.authservice.common.exception.errorcode.ErrorCode;
 import com.shedlr.authservice.identity.dto.request.*;
-import com.shedlr.authservice.identity.dto.response.AuthResponse;
-import com.shedlr.authservice.identity.dto.response.GenericMessageResponse;
+import com.shedlr.authservice.identity.dto.response.*;
+import com.shedlr.authservice.identity.security.RateLimitingService;
 import com.shedlr.authservice.identity.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -16,6 +19,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.time.Duration;
 
 /**
  * AuthController exposes authentication endpoints for the microservice.
@@ -28,6 +33,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AuthService authService;
+    private final RateLimitingService rateLimitingService;
 
     /**
      * Endpoint for user signup.
@@ -37,7 +43,7 @@ public class AuthController {
      */
     @PostMapping("/signup")
     @Operation(summary = "Register a new user", description = "Creates a new user account and sends a verification email")
-    public ResponseEntity<GenericMessageResponse> signup(
+    public ResponseEntity<SignupResponse> signup(
             @Valid @RequestBody SignupRequest request
     ) {
         return ResponseEntity.ok(authService.signup(request));
@@ -96,9 +102,12 @@ public class AuthController {
     @PostMapping("/refresh")
     @Operation(summary = "Refresh access token", description = "Returns a new access and refresh token pair")
     public ResponseEntity<AuthResponse> refresh(
-            @Valid @RequestBody RefreshTokenRequest request
+            @Valid @RequestBody RefreshTokenRequest request,
+            HttpServletRequest httpServletRequest
     ) {
-        return ResponseEntity.ok(authService.refreshToken(request));
+        String ipAddress = httpServletRequest.getRemoteAddr();
+        String userAgent = httpServletRequest.getHeader("User-Agent");
+        return ResponseEntity.ok(authService.refreshToken(request, ipAddress, userAgent));
     }
 
     /**
@@ -126,8 +135,29 @@ public class AuthController {
     @PostMapping("/resend-verification")
     @Operation(summary = "Resend verification email", description = "Generates and sends a new verification token to the user")
     public ResponseEntity<GenericMessageResponse> resendVerification(
-            @Valid @RequestBody ResendVerificationRequest request
+            @Valid @RequestBody ResendVerificationRequest request,
+            HttpServletRequest httpServletRequest
     ) {
+        String key = "rate-limit-resend-verification-" + request.email().toLowerCase().trim() + "-" + httpServletRequest.getRemoteAddr();
+        if (!rateLimitingService.tryConsume(key, 5, Duration.ofHours(1))) {
+            throw new AuthException(ErrorCode.RATE_LIMIT_EXCEEDED, "Resend limit exceeded. Please try again in an hour.");
+        }
         return ResponseEntity.ok(authService.resendVerificationEmail(request));
+    }
+
+    /**
+     * Endpoint for updating email of a pending account.
+     */
+    @PostMapping("/update-pending-email")
+    @Operation(summary = "Update pending email", description = "Allows fixing email typos for unverified accounts")
+    public ResponseEntity<GenericMessageResponse> updatePendingEmail(
+            @Valid @RequestBody UpdatePendingEmailRequest request,
+            HttpServletRequest httpServletRequest
+    ) {
+        String key = "rate-limit-update-email-" + request.pendingAccountId() + "-" + httpServletRequest.getRemoteAddr();
+        if (!rateLimitingService.tryConsume(key, 3, Duration.ofHours(1))) {
+            throw new AuthException(ErrorCode.RATE_LIMIT_EXCEEDED);
+        }
+        return ResponseEntity.ok(authService.updatePendingEmail(request));
     }
 }

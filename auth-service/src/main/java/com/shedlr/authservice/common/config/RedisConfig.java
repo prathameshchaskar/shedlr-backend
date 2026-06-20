@@ -23,10 +23,10 @@ import java.time.Duration;
 public class RedisConfig {
 
     @Value("${spring.data.redis.host:localhost}")
-    private String redisHost;
+    private String host;
 
     @Value("${spring.data.redis.port:6379}")
-    private int redisPort;
+    private int port;
 
     /**
      * Creates a RedisClient using the configured host and port.
@@ -35,8 +35,8 @@ public class RedisConfig {
     @Bean
     public RedisClient redisClient() {
         return RedisClient.create(RedisURI.builder()
-                .withHost(redisHost)
-                .withPort(redisPort)
+                .withHost(host)
+                .withPort(port)
                 .build());
     }
 

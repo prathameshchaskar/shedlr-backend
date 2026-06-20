@@ -36,6 +36,13 @@ public class UserSession extends AuditableEntity {
     @Column(name = "session_public_id", nullable = false, unique = true)
     private UUID sessionPublicId = UUID.randomUUID();
 
+    /** 
+     * Identifies a chain of rotated refresh tokens. 
+     * If any token in the family is reused, the entire family is revoked.
+     */
+    @Column(name = "family_id", nullable = false)
+    private UUID familyId;
+
     /** The user who owns this session. */
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false)

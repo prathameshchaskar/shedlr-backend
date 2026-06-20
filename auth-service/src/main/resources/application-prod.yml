@@ -1,0 +1,13 @@
+spring:
+  jpa:
+    show-sql: false
+  
+management:
+  tracing:
+    sampling:
+      probability: 0.1 # Reduce sampling in production
+  
+logging:
+  level:
+    root: INFO
+    com.shedlr.authservice: INFO

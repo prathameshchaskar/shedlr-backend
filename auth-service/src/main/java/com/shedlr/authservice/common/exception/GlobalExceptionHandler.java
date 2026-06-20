@@ -1,6 +1,12 @@
 package com.shedlr.authservice.common.exception;
 
+import com.shedlr.authservice.common.exception.base.AuthException;
+import com.shedlr.authservice.common.exception.base.ShedlrException;
+import com.shedlr.authservice.common.exception.dto.ApiErrorResponse;
+import com.shedlr.authservice.common.exception.errorcode.ErrorCode;
 import com.shedlr.authservice.identity.dto.response.GenericMessageResponse;
+import jakarta.servlet.http.HttpServletRequest;
+import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
@@ -22,55 +28,87 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 public class GlobalExceptionHandler {
 
     /**
+     * Handles custom ShedlrException hierarchy.
+     */
+    @ExceptionHandler(ShedlrException.class)
+    public ResponseEntity<ApiErrorResponse> handleShedlrException(ShedlrException ex, HttpServletRequest request) {
+        ErrorCode errorCode = ex.getErrorCode();
+        ApiErrorResponse response = new ApiErrorResponse(
+                errorCode.getStatus().value(),
+                errorCode.name(),
+                ex.getMessage(),
+                request.getRequestURI(),
+                OffsetDateTime.now()
+        );
+        return ResponseEntity.status(errorCode.getStatus()).body(response);
+    }
+
+    /**
      * Handles validation errors from @Valid annotations on DTOs.
      * Returns a map of field names and their corresponding error messages.
      */
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<Map<String, String>> handleValidationExceptions(MethodArgumentNotValidException ex) {
+    public ResponseEntity<ApiErrorResponse> handleValidationExceptions(MethodArgumentNotValidException ex, HttpServletRequest request) {
         Map<String, String> errors = new HashMap<>();
         ex.getBindingResult().getAllErrors().forEach(error -> {
             String fieldName = ((FieldError) error).getField();
             String errorMessage = error.getDefaultMessage();
             errors.put(fieldName, errorMessage);
         });
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errors);
+
+        ApiErrorResponse response = new ApiErrorResponse(
+                HttpStatus.BAD_REQUEST.value(),
+                ErrorCode.VALIDATION_ERROR.name(),
+                "Input validation failed: " + errors,
+                request.getRequestURI(),
+                OffsetDateTime.now()
+        );
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
     }
 
     /**
      * Handles authentication failures (incorrect email/password).
      */
     @ExceptionHandler(BadCredentialsException.class)
-    public ResponseEntity<GenericMessageResponse> handleBadCredentials(BadCredentialsException ex) {
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(new GenericMessageResponse("Invalid email or password"));
+    public ResponseEntity<ApiErrorResponse> handleBadCredentials(BadCredentialsException ex, HttpServletRequest request) {
+        ApiErrorResponse response = new ApiErrorResponse(
+                HttpStatus.UNAUTHORIZED.value(),
+                ErrorCode.AUTH_BAD_CREDENTIALS.name(),
+                ErrorCode.AUTH_BAD_CREDENTIALS.getMessage(),
+                request.getRequestURI(),
+                OffsetDateTime.now()
+        );
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
     }
 
     /**
-     * Handles common illegal state exceptions (e.g., email already registered).
+     * Handles locked account attempts.
      */
-    @ExceptionHandler(IllegalStateException.class)
-    public ResponseEntity<GenericMessageResponse> handleIllegalState(IllegalStateException ex) {
-        return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(new GenericMessageResponse(ex.getMessage()));
-    }
-
-    /**
-     * Handles common illegal argument exceptions (e.g., passwords don't match).
-     */
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<GenericMessageResponse> handleIllegalArgument(IllegalArgumentException ex) {
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(new GenericMessageResponse(ex.getMessage()));
+    @ExceptionHandler(org.springframework.security.authentication.LockedException.class)
+    public ResponseEntity<ApiErrorResponse> handleLockedAccount(org.springframework.security.authentication.LockedException ex, HttpServletRequest request) {
+        ApiErrorResponse response = new ApiErrorResponse(
+                HttpStatus.LOCKED.value(),
+                ErrorCode.AUTH_ACCOUNT_LOCKED.name(),
+                ErrorCode.AUTH_ACCOUNT_LOCKED.getMessage(),
+                request.getRequestURI(),
+                OffsetDateTime.now()
+        );
+        return ResponseEntity.status(HttpStatus.LOCKED).body(response);
     }
 
     /**
      * Catch-all handler for any other unexpected exceptions.
      */
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<GenericMessageResponse> handleGeneralException(Exception ex) {
-        // Log the actual exception with stack trace for internal debugging (Observability)
+    public ResponseEntity<ApiErrorResponse> handleGeneralException(Exception ex, HttpServletRequest request) {
         log.error("Unexpected error occurred: ", ex);
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(new GenericMessageResponse("An unexpected error occurred: " + ex.getMessage()));
+        ApiErrorResponse response = new ApiErrorResponse(
+                HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                ErrorCode.GENERIC_ERROR.name(),
+                "An unexpected error occurred: " + ex.getMessage(),
+                request.getRequestURI(),
+                OffsetDateTime.now()
+        );
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
     }
 }

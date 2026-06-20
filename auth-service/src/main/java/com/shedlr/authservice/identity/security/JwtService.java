@@ -1,5 +1,6 @@
 package com.shedlr.authservice.identity.security;
 
+import com.shedlr.authservice.common.config.SecurityProperties;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
@@ -10,6 +11,7 @@ import java.util.Map;
 import java.util.function.Function;
 import javax.crypto.SecretKey;
 import org.springframework.beans.factory.annotation.Value;
+import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 
@@ -19,16 +21,10 @@ import org.springframework.stereotype.Service;
  * Uses jjwt library for robust and secure token management.
  */
 @Service
+@RequiredArgsConstructor
 public class JwtService {
 
-    @Value("${application.security.jwt.secret-key}")
-    private String secretKey;
-
-    @Value("${application.security.jwt.expiration}")
-    private long jwtExpiration;
-
-    @Value("${application.security.jwt.refresh-token.expiration}")
-    private long refreshExpiration;
+    private final SecurityProperties securityProperties;
 
     /**
      * Extracts the username (subject) from the token.
@@ -71,7 +67,7 @@ public class JwtService {
      * @return Generated JWT access token.
      */
     public String generateToken(Map<String, Object> extraClaims, UserDetails userDetails) {
-        return buildToken(extraClaims, userDetails, jwtExpiration);
+        return buildToken(extraClaims, userDetails, securityProperties.getJwt().getExpiration());
     }
 
     /**
@@ -82,7 +78,7 @@ public class JwtService {
      * @return Generated JWT refresh token.
      */
     public String generateRefreshToken(UserDetails userDetails) {
-        return buildToken(new HashMap<>(), userDetails, refreshExpiration);
+        return buildToken(new HashMap<>(), userDetails, securityProperties.getJwt().getRefreshToken().getExpiration());
     }
 
     private String buildToken(
@@ -131,7 +127,7 @@ public class JwtService {
     }
 
     private SecretKey getSignInKey() {
-        byte[] keyBytes = Decoders.BASE64.decode(secretKey);
+        byte[] keyBytes = Decoders.BASE64.decode(securityProperties.getJwt().getSecretKey());
         return Keys.hmacShaKeyFor(keyBytes);
     }
 }
