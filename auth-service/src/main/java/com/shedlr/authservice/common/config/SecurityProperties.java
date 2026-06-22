@@ -44,6 +44,10 @@ public class SecurityProperties {
             @Min(1)
             private Long expiration;
         }
+
+        public Long getRefreshExpiration() {
+            return refreshToken.getExpiration();
+        }
     }
 
     @Getter

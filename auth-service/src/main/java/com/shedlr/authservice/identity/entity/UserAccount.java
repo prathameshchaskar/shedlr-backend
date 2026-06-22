@@ -122,6 +122,6 @@ public class UserAccount extends AuditableEntity implements UserDetails {
 
     @Override
     public boolean isEnabled() {
-        return status == UserStatus.ACTIVE || status == UserStatus.PENDING_VERIFICATION;
+        return status == UserStatus.ACTIVE;
     }
 }

@@ -26,6 +26,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -45,6 +46,7 @@ public class AuthService {
     private final RoleAssignmentRepository roleAssignmentRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final LoginAuditService loginAuditService;
     private final EmailService emailService;
     private final AuthenticationManager authenticationManager;
     private final UserDetailsService userDetailsService;
@@ -287,25 +289,24 @@ public class AuthService {
     @Transactional
     public AuthResponse login(LoginRequest request) {
         String email = request.email().toLowerCase().trim();
+        org.springframework.security.core.Authentication authentication;
         try {
-            authenticationManager.authenticate(
+            authentication = authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(email, request.password())
             );
-        } catch (BadCredentialsException e) {
-            handleFailedLogin(email);
+        } catch (org.springframework.security.core.AuthenticationException e) {
+            if (e instanceof org.springframework.security.authentication.BadCredentialsException) {
+                loginAuditService.handleFailedLogin(email);
+            }
             throw e;
         }
 
-        UserAccount user = userAccountRepository.findByEmail(email)
-                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        UserAccount user = (UserAccount) authentication.getPrincipal();
 
         // Reset failed login attempts upon successful authentication
-        if (user.getFailedLoginAttempts() > 0 || user.getLockedUntil() != null) {
-            resetFailedAttempts(user);
-        }
+        loginAuditService.resetFailedAttempts(user.getId());
 
-        UserDetails userDetails = userDetailsService.loadUserByUsername(request.email());
-        String jwtToken = jwtService.generateToken(userDetails);
+        String jwtToken = jwtService.generateToken(user);
         
         // Generate two-factor refresh token: <public_id>:<secret>
         UUID publicId = UUID.randomUUID();
@@ -341,32 +342,21 @@ public class AuthService {
 
     /**
      * Internal helper to reset failed login attempts for a user.
+     * @deprecated Use LoginAuditService.resetFailedAttempts instead.
      */
+    @Deprecated
     private void resetFailedAttempts(UserAccount user) {
-        user.setFailedLoginAttempts(0);
-        user.setLockedUntil(null);
-        userAccountRepository.save(user);
-        log.info("Failed login attempts reset for user: {}", user.getEmail());
+        loginAuditService.resetFailedAttempts(user.getId());
     }
 
     /**
      * Internal helper to handle failed login attempts and trigger lockout if threshold reached.
+     * @deprecated Use LoginAuditService.handleFailedLogin instead.
      */
-    private void handleFailedLogin(String email) {
-        userAccountRepository.findByEmail(email).ifPresent(user -> {
-            int attempts = user.getFailedLoginAttempts() + 1;
-            user.setFailedLoginAttempts(attempts);
-            
-            int maxAttempts = securityProperties.getLockout().getMaxAttempts();
-            if (attempts >= maxAttempts) {
-                user.setLockedUntil(OffsetDateTime.now().plusMinutes(securityProperties.getLockout().getDurationMinutes()));
-                log.warn("Account locked for user {} due to {} failed attempts. Locked until: {}", 
-                        email, attempts, user.getLockedUntil());
-            } else {
-                log.info("Failed login attempt {} for user: {}", attempts, email);
-            }
-            userAccountRepository.save(user);
-        });
+    @Deprecated
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void handleFailedLogin(String email) {
+        loginAuditService.handleFailedLogin(email);
     }
 
     /**
@@ -444,7 +434,7 @@ public class AuthService {
                 newAccessToken,
                 nextPublicRefreshToken,
                 "Bearer",
-                3600,
+                securityProperties.getJwt().getRefreshExpiration() / 1000,
                 getUserSummary(user)
         );
     }

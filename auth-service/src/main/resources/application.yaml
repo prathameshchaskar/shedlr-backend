@@ -5,7 +5,7 @@ spring:
   # Mail Configuration
   mail:
     host: ${MAIL_HOST}
-    port: ${MAIL_PORT:587}
+    port: ${MAIL_PORT}
     username: ${MAIL_USERNAME}
     password: ${MAIL_PASSWORD}
     properties:
@@ -41,8 +41,8 @@ spring:
   # Redis Configuration
   data:
     redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
 
 # Management & Monitoring
 management:
@@ -51,7 +51,7 @@ management:
       probability: 1.0
   zipkin:
     tracing:
-      endpoint: ${ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
+      endpoint: ${ZIPKIN_ENDPOINT}
 
 # Custom Application Properties
 application:
@@ -62,12 +62,12 @@ application:
   
   security:
     cors:
-      allowed-origins: ${ALLOWED_ORIGINS:http://localhost:4200}
+      allowed-origins: ${ALLOWED_ORIGINS}
     jwt:
       secret-key: ${JWT_SECRET_KEY}
-      expiration: ${JWT_ACCESS_TOKEN_EXPIRATION:3600000}
+      expiration: ${JWT_ACCESS_TOKEN_EXPIRATION}
       refresh-token:
-        expiration: ${JWT_REFRESH_TOKEN_EXPIRATION:604800000}
+        expiration: ${JWT_REFRESH_TOKEN_EXPIRATION}
     lockout:
       max-attempts: ${LOCKOUT_MAX_ATTEMPTS:5}
       duration-minutes: ${LOCKOUT_DURATION:15}

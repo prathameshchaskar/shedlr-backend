@@ -33,6 +33,8 @@ public enum ErrorCode {
     AUTH_ACCOUNT_LOCKED(HttpStatus.LOCKED, "Account is temporarily locked due to many failed attempts"),
     AUTH_ACCOUNT_DISABLED(HttpStatus.FORBIDDEN, "Account has been disabled"),
     AUTH_ACCOUNT_SUSPENDED(HttpStatus.FORBIDDEN, "Account has been suspended"),
+    AUTH_ACCOUNT_EXPIRED(HttpStatus.FORBIDDEN, "Account has expired"),
+    AUTH_CREDENTIALS_EXPIRED(HttpStatus.FORBIDDEN, "Credentials have expired"),
 
     // Session / JWT
     SESSION_EXPIRED(HttpStatus.UNAUTHORIZED, "Session has expired"),

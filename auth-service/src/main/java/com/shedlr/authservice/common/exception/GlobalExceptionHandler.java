@@ -97,6 +97,52 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Handles disabled accounts (e.g., unverified or manually disabled).
+     */
+    @ExceptionHandler(org.springframework.security.authentication.DisabledException.class)
+    public ResponseEntity<ApiErrorResponse> handleDisabledAccount(org.springframework.security.authentication.DisabledException ex, HttpServletRequest request) {
+        // Since we now only enable ACTIVE users, PENDING_VERIFICATION users will trigger DisabledException
+        ApiErrorResponse response = new ApiErrorResponse(
+                HttpStatus.FORBIDDEN.value(),
+                ErrorCode.AUTH_NOT_VERIFIED.name(),
+                ErrorCode.AUTH_NOT_VERIFIED.getMessage(),
+                request.getRequestURI(),
+                OffsetDateTime.now()
+        );
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+    }
+
+    /**
+     * Handles expired accounts.
+     */
+    @ExceptionHandler(org.springframework.security.authentication.AccountExpiredException.class)
+    public ResponseEntity<ApiErrorResponse> handleAccountExpired(org.springframework.security.authentication.AccountExpiredException ex, HttpServletRequest request) {
+        ApiErrorResponse response = new ApiErrorResponse(
+                HttpStatus.FORBIDDEN.value(),
+                ErrorCode.AUTH_ACCOUNT_EXPIRED.name(),
+                ErrorCode.AUTH_ACCOUNT_EXPIRED.getMessage(),
+                request.getRequestURI(),
+                OffsetDateTime.now()
+        );
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+    }
+
+    /**
+     * Handles expired credentials.
+     */
+    @ExceptionHandler(org.springframework.security.authentication.CredentialsExpiredException.class)
+    public ResponseEntity<ApiErrorResponse> handleCredentialsExpired(org.springframework.security.authentication.CredentialsExpiredException ex, HttpServletRequest request) {
+        ApiErrorResponse response = new ApiErrorResponse(
+                HttpStatus.FORBIDDEN.value(),
+                ErrorCode.AUTH_CREDENTIALS_EXPIRED.name(),
+                ErrorCode.AUTH_CREDENTIALS_EXPIRED.getMessage(),
+                request.getRequestURI(),
+                OffsetDateTime.now()
+        );
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+    }
+
+    /**
      * Catch-all handler for any other unexpected exceptions.
      */
     @ExceptionHandler(Exception.class)

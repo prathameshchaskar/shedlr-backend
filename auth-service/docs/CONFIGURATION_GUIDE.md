@@ -19,12 +19,14 @@ Sensitive information is NEVER stored in code or YAML files. All secrets must be
    - Note: The application does NOT automatically load the `.env` file. You must ensure the variables in `.env` are exported to your environment (e.g., using `source .env` or IDE plugins like "EnvFile").
 
 2. **Infrastructure**:
-   - Ensure PostgreSQL is running and the database specified in `DB_URL` exists.
-   - Ensure Redis is running on `REDIS_HOST` and `REDIS_PORT`.
+   - Start the required services using Docker Compose: `docker-compose up -d`.
+   - This will start PostgreSQL, Redis, and Zipkin.
+   - Note: The `auth-service` is intended to be run locally (outside Docker) for development.
 
 3. **Running the App**:
-   - Run the application with `-Dspring.profiles.active=dev`.
-   - In IntelliJ IDEA, use the "EnvFile" plugin or manually set Environment Variables in the Run Configuration.
+   - Use IntelliJ IDEA to run the application.
+   - Configure environment variables using the "EnvFile" plugin or manual entry in the Run Configuration.
+   - Set `-Dspring.profiles.active=dev` in the VM options if not already set.
 
 ## Production Configuration
 
